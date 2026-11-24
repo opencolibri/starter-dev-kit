@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenColibri\Starter\DevKit;
 
 use OpenColibri\Starter\Core\App;
+use OpenColibri\Starter\Plugins\Tasks\PluginTasks;
 use OpenColibri\Starter\Themes\HeaderLayout;
 
 use function Castor\fs;
@@ -19,22 +20,6 @@ use function Castor\fs;
  */
 final readonly class InstanceState
 {
-    /**
-     * The Composer package of each plugin of opencolibri/starter-plugins, to tell which ones are installed.
-     */
-    public const array PLUGIN_PACKAGES = [
-        'ai_dev_tools' => 'sylius/sylius-ai-dev-tools',
-        'altcha' => 'tito10047/altcha-bundle',
-        'bugsnag' => 'bugsnag/bugsnag-symfony',
-        'cms' => 'sylius/cms-plugin',
-        'gdpr' => 'synolia/sylius-gdpr-plugin',
-        'invoicing' => 'sylius/invoicing-plugin',
-        'media' => 'jolicode/media-bundle',
-        'product_bundle' => 'sylius/product-bundle-plugin',
-        'recaptcha' => 'karser/karser-recaptcha3-bundle',
-        'refund' => 'sylius/refund-plugin',
-    ];
-
     public function __construct(
         private App $app,
     ) {}
@@ -108,7 +93,8 @@ final readonly class InstanceState
             \is_array($composer['require-dev'] ?? null) ? $composer['require-dev'] : [],
         ));
 
-        return array_keys(array_filter(self::PLUGIN_PACKAGES, static fn(string $package): bool => \in_array($package, $packages, true)));
+        // The Composer package each plugin installer declares (PluginInstallerInterface::package()), custom ones included.
+        return array_keys(array_filter(PluginTasks::packages(), static fn(string $package): bool => \in_array($package, $packages, true)));
     }
 
     /**
