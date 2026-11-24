@@ -28,4 +28,6 @@ Every task the admin needs is exposed to castor-api (`#[AsApi]`): `opencolibri/s
 from its dashboard. `dev-kit:apply` reports its steps to `.castor/import/var/.progress/dev-kit.json`.
 
 The loaded dataset is not stored by Sylius: dev-kit records it in `var/dev-kit/state.json` of the app when it loads
-one. The channel is read and changed in SQL: PostgreSQL only, like the Docker stack.
+one. Sylius has no console command for the channel: the dev-kit copies its own, `sylius:dev-kit:channel`, into
+the app (`src/Command/DevKitChannelCommand.php`, refreshed before each use, do not change it), which goes through
+the Sylius repositories and works on any database Doctrine supports.

@@ -7,15 +7,20 @@ namespace OpenColibri\Starter\DevKit;
 use OpenColibri\Starter\Core\App;
 use OpenColibri\Starter\Core\Util\Docker;
 
+use function Castor\fs;
 use function Castor\with;
 
 /**
- * Reads and changes the name, locales and currencies of the default channel (WEB_STORE), in SQL through
- * "bin/console dbal:run-sql": Sylius has no console command for them. PostgreSQL only, like the Docker stack.
+ * Reads and changes the name, locales and currencies of the default channel (WEB_STORE). Sylius has no console
+ * command for them: the dev-kit ships its own into the application (resources/application/), which goes through the
+ * Sylius repositories and factories, so it works on any database Doctrine supports.
  */
 final readonly class Channel
 {
     public const string CODE = 'WEB_STORE';
+
+    /** Shipped into the application and refreshed before each call, like the reset command of opencolibri/starter-fixtures. */
+    public const string COMMAND_FILE = 'src/Command/DevKitChannelCommand.php';
 
     public function __construct(
         private App $app,
@@ -26,29 +31,7 @@ final readonly class Channel
      */
     public function read(): array
     {
-        $code = self::CODE;
-        $json = $this->fetchValue(<<<SQL
-            SELECT json_build_object(
-                'name', c.name,
-                'locale', l.code,
-                'locales', (SELECT json_agg(x.code ORDER BY x.code) FROM sylius_channel_locales cl JOIN sylius_locale x ON x.id = cl.locale_id WHERE cl.channel_id = c.id),
-                'currencies', (SELECT json_agg(y.code ORDER BY y.id = c.base_currency_id DESC, y.code) FROM sylius_channel_currencies cc JOIN sylius_currency y ON y.id = cc.currency_id WHERE cc.channel_id = c.id),
-                'base', b.code
-            )
-            FROM sylius_channel c JOIN sylius_locale l ON l.id = c.default_locale_id JOIN sylius_currency b ON b.id = c.base_currency_id
-            WHERE c.code = '{$code}'
-            SQL);
-
-        /** @var array{name: string, locale: string, locales: list<string>|null, currencies: list<string>|null, base: string} $data */
-        $data = json_decode($json, true, flags: \JSON_THROW_ON_ERROR);
-        $currencies = array_values(array_diff($data['currencies'] ?? [], [$data['base']]));
-
-        return [
-            'name' => $data['name'],
-            'locale' => $data['locale'],
-            'locales' => $data['locales'] ?? [$data['locale']],
-            'currencies' => [$data['base'], ...$currencies],
-        ];
+        return $this->run([]);
     }
 
     /**
@@ -57,92 +40,59 @@ final readonly class Channel
      */
     public function update(?string $name = null, ?array $locales = null, ?string $defaultLocale = null, ?array $currencies = null): void
     {
-        // Validates the codes before they reach the SQL.
+        // Validates the codes before they reach the command.
         new Manifest(name: $name, locale: $defaultLocale, locales: $locales, currencies: $currencies);
 
-        $channel = \sprintf("(SELECT id FROM sylius_channel WHERE code = '%s')", self::CODE);
-        $statements = [];
+        $options = array_filter([
+            'name' => $name,
+            'locales' => null !== $locales ? implode(',', $locales) : null,
+            'default-locale' => $defaultLocale,
+            'currencies' => null !== $currencies ? implode(',', $currencies) : null,
+        ], static fn(?string $value): bool => null !== $value);
 
-        if (null !== $name) {
-            $statements[] = \sprintf("UPDATE sylius_channel SET name = %s WHERE code = '%s'", self::quote($name), self::CODE);
+        if ([] !== $options) {
+            $this->run($options);
         }
-
-        if (null !== $locales) {
-            $statements = [...$statements, ...self::ensure('sylius_locale', $locales)];
-            $statements[] = \sprintf('DELETE FROM sylius_channel_locales WHERE channel_id = %s', $channel);
-            $statements[] = \sprintf("INSERT INTO sylius_channel_locales (channel_id, locale_id) SELECT %s, id FROM sylius_locale WHERE code IN (%s)", $channel, self::inList($locales));
-        }
-
-        if (null !== $defaultLocale) {
-            $statements = [...$statements, ...self::ensure('sylius_locale', [$defaultLocale])];
-            $statements[] = \sprintf("UPDATE sylius_channel SET default_locale_id = (SELECT id FROM sylius_locale WHERE code = '%s') WHERE code = '%s'", $defaultLocale, self::CODE);
-        }
-
-        if (null !== $currencies) {
-            $statements = [...$statements, ...self::ensure('sylius_currency', $currencies)];
-            $statements[] = \sprintf('DELETE FROM sylius_channel_currencies WHERE channel_id = %s', $channel);
-            $statements[] = \sprintf("INSERT INTO sylius_channel_currencies (channel_id, currency_id) SELECT %s, id FROM sylius_currency WHERE code IN (%s)", $channel, self::inList($currencies));
-            $statements[] = \sprintf("UPDATE sylius_channel SET base_currency_id = (SELECT id FROM sylius_currency WHERE code = '%s') WHERE code = '%s'", $currencies[0], self::CODE);
-        }
-
-        if ([] === $statements) {
-            return;
-        }
-
-        // One transaction: the channel never keeps a default locale it does not enable.
-        $this->console('BEGIN; ' . implode('; ', $statements) . '; COMMIT');
     }
 
-    private function fetchValue(string $sql): string
+    /**
+     * @param array<string, string> $options
+     *
+     * @return array{name: string, locale: string, locales: list<string>, currencies: list<string>}
+     */
+    private function run(array $options): array
     {
-        $output = $this->console($sql);
+        $this->installCommand();
 
-        // The value sits in the only data row of the table dbal:run-sql prints.
-        foreach (explode("\n", $output) as $line) {
-            $line = trim($line);
+        $command = 'php bin/console sylius:dev-kit:channel --no-ansi ' . escapeshellarg(self::CODE);
+        foreach ($options as $option => $value) {
+            $command .= ' --' . $option . '=' . escapeshellarg($value);
+        }
 
-            if (str_starts_with($line, '{') || str_starts_with($line, '[')) {
-                return $line;
+        $output = with(fn(): string => Docker::run($this->app, $command)->getOutput(), quiet: true);
+
+        // The JSON is the last line: Symfony may print deprecation notices before it.
+        foreach (array_reverse(explode("\n", trim($output))) as $line) {
+            if (str_starts_with(trim($line), '{')) {
+                /** @var array{name: string, locale: string, locales: list<string>, currencies: list<string>} */
+                return json_decode(trim($line), true, flags: \JSON_THROW_ON_ERROR);
             }
         }
 
-        throw new \RuntimeException(\sprintf('The %s channel was not found: load the fixtures first.', self::CODE));
+        throw new \RuntimeException(\sprintf('Unable to read the %s channel: %s', self::CODE, trim($output)));
     }
 
-    private function console(string $sql): string
+    private function installCommand(): void
     {
-        $command = 'php bin/console dbal:run-sql --no-ansi ' . escapeshellarg(preg_replace('/\s+/', ' ', $sql) ?? $sql);
+        $source = \dirname(__DIR__) . '/resources/application/' . self::COMMAND_FILE;
+        $target = $this->app->directory() . '/' . self::COMMAND_FILE;
 
-        return with(fn(): string => Docker::run($this->app, $command)->getOutput(), quiet: true);
-    }
+        if (is_file($target) && file_get_contents($source) === file_get_contents($target)) {
+            return;
+        }
 
-    /**
-     * @param list<string> $codes
-     *
-     * @return list<string>
-     */
-    private static function ensure(string $table, array $codes): array
-    {
-        return array_map(
-            static fn(string $code): string => \sprintf(
-                "INSERT INTO %1\$s (id, code, created_at, updated_at) SELECT nextval('%1\$s_id_seq'), '%2\$s', NOW(), NOW() WHERE NOT EXISTS (SELECT 1 FROM %1\$s WHERE code = '%2\$s')",
-                $table,
-                $code,
-            ),
-            $codes,
-        );
-    }
-
-    /**
-     * @param list<string> $codes validated locale or currency codes
-     */
-    private static function inList(array $codes): string
-    {
-        return implode(', ', array_map(static fn(string $code): string => "'" . $code . "'", $codes));
-    }
-
-    private static function quote(string $value): string
-    {
-        return "'" . str_replace("'", "''", $value) . "'";
+        fs()->copy($source, $target, true);
+        // A new command class: the autoloader and the container (built once in prod) must see it.
+        with(fn() => Docker::run($this->app, 'composer dump-autoload -q && php bin/console cache:clear -n'), quiet: true);
     }
 }
