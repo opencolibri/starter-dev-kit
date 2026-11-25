@@ -1,0 +1,9 @@
+ux_icons:
+    default_icon_attributes:
+        fill: currentColor
+        height: '1em'
+        width: '1em'
+
+when@prod:
+    ux_icons:
+        ignore_not_found: true

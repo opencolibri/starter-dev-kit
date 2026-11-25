@@ -14,6 +14,7 @@ use OpenColibri\Starter\Core\Progress\TaskProgress;
 use OpenColibri\Starter\Core\Util\Symfony;
 use OpenColibri\Starter\DevKit\Catalog;
 use OpenColibri\Starter\DevKit\Channel;
+use OpenColibri\Starter\DevKit\Installer\DevKitAdminInstaller;
 use OpenColibri\Starter\DevKit\InstanceState;
 use OpenColibri\Starter\DevKit\Manifest;
 use OpenColibri\Starter\DevKit\Plan;
@@ -73,21 +74,44 @@ final readonly class DevKitTasks
         ];
 
         yield [
-            'task' => new AsTask('init', 'dev-kit', 'Write starter.yaml from what the local shop runs now'),
+            'task' => new AsTask('init', 'dev-kit', 'Set up the dev-kit: starter.yaml from what the local shop runs now, and its admin'),
             'function' => function (
                 #[AsArgument(description: 'The manifest to write')]
                 string $file = self::MANIFEST,
                 #[AsOption(description: 'Overwrite an existing manifest')]
                 bool $force = false,
+                #[AsOption(description: 'Do not install the dev-kit admin (a Symfony service of the stack, in dev-kit/)')]
+                bool $noAdmin = false,
             ): int {
                 if (is_file($file) && !$force) {
-                    io()->error(\sprintf('%s already exists: edit it, or pass --force to overwrite it.', $file));
-
-                    return 1;
+                    io()->note(\sprintf('%s already exists: kept (--force to write it again).', $file));
+                } else {
+                    fs()->dumpFile($file, (new InstanceState($this->app))->read()->toYaml());
+                    io()->success(\sprintf('%s describes the shop as it runs now. Edit it, then run "castor dev-kit:apply".', $file));
                 }
 
-                fs()->dumpFile($file, (new InstanceState($this->app))->read()->toYaml());
-                io()->success(\sprintf('%s describes the shop as it runs now. Edit it, then run "castor dev-kit:apply".', $file));
+                if ($noAdmin) {
+                    return 0;
+                }
+
+                if (is_dir(DevKitAdminInstaller::DIRECTORY)) {
+                    io()->note(\sprintf('The dev-kit admin is already installed in %s/.', DevKitAdminInstaller::DIRECTORY));
+
+                    return 0;
+                }
+
+                $hostname = $this->app->hostname() ?? 'app.test';
+                $domain = 'dev-kit.' . $hostname;
+
+                io()->section('Installing the dev-kit admin');
+                // A new process: the installer adds the service to castor.php, builds and starts it.
+                run([
+                    'castor', 'docker:service:install', DevKitAdminInstaller::NAME, '--no-interaction',
+                    '--with-domain=' . $domain,
+                    '--with-storefront-url=https://' . $hostname . '/',
+                ]);
+
+                io()->success(\sprintf('The dev-kit admin runs on https://%s/: start castor-api next to it with "castor api:serve-development".', $domain));
 
                 return 0;
             },

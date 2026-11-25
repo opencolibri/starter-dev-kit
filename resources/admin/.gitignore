@@ -1,0 +1,5 @@
+/.env.local
+/var/
+/vendor/
+/public/assets/
+/assets/vendor/

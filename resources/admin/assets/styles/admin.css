@@ -1,0 +1,8 @@
+@import "tailwindcss";
+/* Theme of Sylius Shadcn Admin UI, then the templates of the dev-kit. */
+@import "../../vendor/sylius/shadcn-admin-ui/assets/styles/theme.css";
+@import "../../vendor/opencolibri/starter-dev-kit-bundle/assets/styles/dev-kit.css";
+
+/* Tokens of this instance, e.g.:
+:root { --radius: 0.75rem; }
+*/

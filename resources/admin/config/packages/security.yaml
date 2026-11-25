@@ -1,0 +1,5 @@
+# The dev-kit drives the local shop of the developer: no login. It listens on 127.0.0.1 only, like castor-api.
+security:
+    firewalls:
+        main:
+            security: false

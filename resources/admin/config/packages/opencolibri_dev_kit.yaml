@@ -1,0 +1,15 @@
+# The dev-kit: hooks of the pages (and of Sylius Shadcn Admin UI). Hooks below the import win over the bundle's.
+imports:
+    - { resource: '@OpenColibriStarterDevKitBundle/config/app.php' }
+
+# castor_api and storefront_url default to the CASTOR_API_URL, CASTOR_API_TOKEN and DEV_KIT_STOREFRONT_URL
+# environment variables (.env, .env.local).
+opencolibri_dev_kit:
+    # This admin lives in dev-kit/, at the root of the project.
+    import_var_dir: '%kernel.project_dir%/../.castor/import/var'
+
+sylius_shadcn_admin_ui:
+    sidebar:
+        variant: inset
+    # Base color, then accent: see vendor/sylius/shadcn-admin-ui/assets/styles/themes/
+    themes: [stone, green]

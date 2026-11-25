@@ -1,0 +1,13 @@
+# Dashboard (and unused login) of Sylius Admin UI, at the root of the domain.
+sylius_admin_ui:
+    resource: '@SyliusAdminUiBundle/config/routes.php'
+
+# The dev-kit pages (history, previews).
+opencolibri_dev_kit:
+    resource: '@OpenColibriStarterDevKitBundle/config/routes.php'
+
+controllers:
+    resource:
+        path: ../src/Controller/
+        namespace: App\Controller
+    type: attribute
