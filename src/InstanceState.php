@@ -81,20 +81,7 @@ final readonly class InstanceState
             return array_values(array_filter($recorded, \is_string(...)));
         }
 
-        $file = $this->app->directory() . '/composer.json';
-
-        if (!is_file($file)) {
-            return [];
-        }
-
-        $composer = json_decode((string) file_get_contents($file), true, flags: \JSON_THROW_ON_ERROR);
-        $packages = array_keys(array_merge(
-            \is_array($composer['require'] ?? null) ? $composer['require'] : [],
-            \is_array($composer['require-dev'] ?? null) ? $composer['require-dev'] : [],
-        ));
-
-        // The Composer package each plugin installer declares (PluginInstallerInterface::package()), custom ones included.
-        return array_keys(array_filter(PluginTasks::packages(), static fn(string $package): bool => \in_array($package, $packages, true)));
+        return PluginTasks::installed($this->app->directory());
     }
 
     /**
