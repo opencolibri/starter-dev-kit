@@ -6,6 +6,7 @@ namespace OpenColibri\Starter\DevKit;
 
 use OpenColibri\Starter\Core\Dataset\Datasets;
 use OpenColibri\Starter\Datasets\DatasetPreview;
+use OpenColibri\Starter\Plugins\PluginCategory;
 use OpenColibri\Starter\Plugins\Tasks\PluginTasks;
 use OpenColibri\Starter\Themes\HeaderLayout;
 use OpenColibri\Starter\Themes\ThemeCategory;
@@ -14,7 +15,7 @@ use OpenColibri\Starter\Themes\Themes;
 
 /**
  * What a manifest can pick, for the dev-kit interface: the themes by category, with their thumbnails and header
- * placements, the datasets with their preview, the plugins with their description.
+ * placements, the datasets with their preview, the plugins by category with their description.
  */
 final readonly class Catalog
 {
@@ -58,10 +59,16 @@ final readonly class Catalog
 
         $plugins = [];
         $removable = PluginTasks::removerNames();
+        $categories = PluginTasks::categories();
 
         foreach (PluginTasks::descriptions() as $name => $description) {
-            $plugins[] = ['name' => $name, 'description' => $description, 'removable' => \in_array($name, $removable, true)];
+            $plugins[] = ['name' => $name, 'description' => $description, 'removable' => \in_array($name, $removable, true), 'category' => $categories[$name] ?? null];
         }
+
+        // By category, in the order of the documentation, then the plugins of none; by name in each.
+        $order = array_flip(PluginCategory::sort(array_values(array_unique(array_column(array_column($plugins, 'category'), 'name')))));
+        $rank = static fn(array $plugin): array => [$order[$plugin['category']['name'] ?? ''] ?? \PHP_INT_MAX, $plugin['name']];
+        usort($plugins, static fn(array $a, array $b): int => $rank($a) <=> $rank($b));
 
         return ['themes' => $themes, 'datasets' => $datasets, 'plugins' => $plugins];
     }
