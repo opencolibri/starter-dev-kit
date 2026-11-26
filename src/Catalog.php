@@ -8,12 +8,13 @@ use OpenColibri\Starter\Core\Dataset\Datasets;
 use OpenColibri\Starter\Datasets\DatasetPreview;
 use OpenColibri\Starter\Plugins\Tasks\PluginTasks;
 use OpenColibri\Starter\Themes\HeaderLayout;
+use OpenColibri\Starter\Themes\ThemeCategory;
 use OpenColibri\Starter\Themes\ThemePreview;
 use OpenColibri\Starter\Themes\Themes;
 
 /**
- * What a manifest can pick, for the dev-kit interface: the themes with their thumbnails and header placements, the
- * datasets with their preview, the plugins with their description.
+ * What a manifest can pick, for the dev-kit interface: the themes by category, with their thumbnails and header
+ * placements, the datasets with their preview, the plugins with their description.
  */
 final readonly class Catalog
 {
@@ -29,11 +30,13 @@ final readonly class Catalog
     {
         $themes = [];
 
-        foreach (array_keys(Themes::installers()) as $theme) {
+        foreach (ThemeCategory::sort(array_keys(Themes::installers())) as $theme) {
+            $category = ThemeCategory::of($theme);
             $layout = HeaderLayout::describe($theme, HeaderLayout::resolve($theme));
             $themes[] = [
                 'name' => $theme,
                 'label' => ucfirst(str_replace('_', ' ', $theme)),
+                'category' => null === $category ? null : ['name' => $category->value, 'label' => $category->label(), 'description' => $category->description()],
                 'menu' => $layout['menu'],
                 'search' => $layout['search'],
                 'menus' => $layout['menus'],
