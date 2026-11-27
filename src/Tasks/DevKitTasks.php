@@ -19,10 +19,13 @@ use OpenColibri\Starter\DevKit\InstanceState;
 use OpenColibri\Starter\DevKit\Manifest;
 use OpenColibri\Starter\DevKit\Plan;
 use OpenColibri\Starter\DevKit\Step;
+use OpenColibri\Starter\DevKit\Tui\DevKitTui;
+use OpenColibri\Starter\DevKit\Tui\ShopState;
 use OpenColibri\Starter\Plugins\Tasks\PluginTasks;
 use OpenColibri\Starter\Themes\HeaderLayout;
 use OpenColibri\Starter\Themes\Themes;
 
+use function Castor\context;
 use function Castor\fs;
 use function Castor\input;
 use function Castor\io;
@@ -230,6 +233,67 @@ final readonly class DevKitTasks
         ];
 
         yield [
+            'task' => new AsTask('tui', 'dev-kit', 'Edit starter.yaml in the terminal: boards of themes, catalogs and plugins, and the plan as it changes (experimental)'),
+            'function' => function (
+                #[AsArgument(description: 'The manifest to edit')]
+                string $file = self::MANIFEST,
+                #[AsOption(description: 'Write the screen as HTML to this file instead of running, for the documentation')]
+                ?string $snapshot = null,
+                #[AsOption(description: 'The size of the snapshot, as <columns>x<rows>')]
+                string $size = '160x44',
+                #[AsOption(description: 'Keys pressed before the snapshot, comma-separated: 1-5, up, down, left, right, enter, space, tab, or a character')]
+                string $keys = '',
+            ): int {
+                if (null === $snapshot && (!input()->isInteractive() || !stream_isatty(\STDIN) || !stream_isatty(\STDOUT))) {
+                    io()->error('dev-kit:tui needs an interactive terminal: use dev-kit:apply instead.');
+
+                    return 1;
+                }
+
+                io()->writeln('Reading the local shop…');
+
+                try {
+                    $current = (new InstanceState($this->app))->read();
+                    $wanted = is_file($file) ? Manifest::fromFile($file) : $current;
+                } catch (\InvalidArgumentException $exception) {
+                    io()->error($exception->getMessage());
+
+                    return 1;
+                }
+
+                $tui = new DevKitTui(new ShopState($current, $wanted, self::validate(...), Catalog::describe(), PluginTasks::removerNames()), $file);
+
+                if (null !== $snapshot) {
+                    [$columns, $rows] = array_map('intval', explode('x', $size)) + [1 => 44];
+                    $named = ['up' => "\e[A", 'down' => "\e[B", 'right' => "\e[C", 'left' => "\e[D", 'enter' => "\r", 'space' => ' ', 'tab' => "\t", 'esc' => "\e"];
+                    $pressed = array_map(static fn(string $key): string => $named[$key] ?? $key, array_values(array_filter(array_map('trim', explode(',', $keys)), static fn(string $key): bool => '' !== $key)));
+                    fs()->dumpFile($snapshot, $tui->snapshot($columns, $rows, $pressed));
+                    io()->success(\sprintf('The screen is in %s.', $snapshot));
+
+                    return 0;
+                }
+
+                // The alternate screen: the TUI takes the whole terminal, and leaves the scrollback as it was.
+                io()->write("\e[?1049h");
+
+                try {
+                    $outcome = $tui->run();
+                } finally {
+                    io()->write("\e[?1049l");
+                }
+
+                if (DevKitTui::QUIT === $outcome) {
+                    return 0;
+                }
+
+                // A new process: the plan runs with its usual output. The TUI already confirmed the destructive steps.
+                $process = run(['castor', 'dev-kit:apply', $file, '--yes'], context: context()->withAllowFailure()->withTimeout(null)->withTty());
+
+                return $process->getExitCode() ?? 1;
+            },
+        ];
+
+        yield [
             'task' => new AsTask('history', 'dev-kit', 'List the states dev-kit:apply brought the shop to, the latest first'),
             /** @phpstan-ignore-next-line */
             'function' => #[AsApi(exposeSchema: false)] function (): int {
@@ -276,7 +340,7 @@ final readonly class DevKitTasks
     /**
      * @return list<string>
      */
-    private static function validate(Manifest $manifest): array
+    public static function validate(Manifest $manifest): array
     {
         $errors = [];
         $themes = [...array_keys(Themes::installers()), Manifest::DEFAULT_THEME];

@@ -20,6 +20,7 @@ castor dev-kit:status            # what the shop runs now (--format=json)
 | `dev-kit:status` | Reads the instance: theme and header from the theme hooks, plugins from `composer.json`, name, locales and currencies of the default channel from the database |
 | `dev-kit:init` | Writes `starter.yaml` from the instance |
 | `dev-kit:apply` | Plans and runs the steps that bring the instance to `starter.yaml` |
+| `dev-kit:tui` | Edits `starter.yaml` in the terminal: boards of themes, catalogs and plugins, and the plan as it changes (experimental) |
 | `dev-kit:channel` | Changes the name, locales and currencies of the default channel (`WEB_STORE`) |
 | `dev-kit:history` | The states `dev-kit:apply` brought the shop to, as JSON |
 | `dev-kit:catalog` | What a manifest can pick (themes, datasets, plugins), as JSON |
